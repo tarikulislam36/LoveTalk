@@ -85,7 +85,7 @@
     <audio id="remoteAudio" autoplay></audio>
 
     <script>
-        const socket = io("http://localhost:3000"); // backend server
+        const socket = io(); // backend server
         const roomId = new URLSearchParams(location.search).get("id");
         const peer = new Peer({
             host: "0.peerjs.com",
