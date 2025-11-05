@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Simple 1-to-1 ID Exchange</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io("http://localhost:3000"); // backend server
+        const roomId = new URLSearchParams(location.search).get("id"); // e.g. hzgxzx
+
+        // generate random ID for user
+        const myId = Math.random().toString(36).substr(2, 6);
+        console.log("My ID:", myId);
+
+        socket.emit("join-room", roomId, myId);
+
+        // receive other user's ID
+        socket.on("user-connected", (userId) => {
+            console.log("Remote user ID:", userId);
+        });
+    </script>
+</head>
+
+<body>
+    <h2>Room ID: <span id="room"></span></h2>
+    <h3>Check console for ID exchange</h3>
+    <script>
+        document.getElementById("room").innerText = roomId;
+    </script>
+</body>
+
+</html>
