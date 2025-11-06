@@ -4,10 +4,10 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LoveTalk — 1:1 Video Chat</title>
+    <title>LoveTalk - 1:1 Audio Chat</title>
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body {
             background: radial-gradient(circle at 50% 50%, #0d0d0d, #000000 80%);
@@ -33,13 +33,6 @@
             box-shadow: 0 0 20px #0ff;
         }
 
-        video {
-            background: #000;
-            border-radius: 0.75rem;
-            object-fit: cover;
-            box-shadow: 0 0 10px #0ff55f;
-        }
-
         .voice-bar {
             width: 10px;
             background: #0ff;
@@ -61,29 +54,23 @@
 
 <body class="flex flex-col items-center justify-center min-h-screen p-6">
 
-    <h1 class="text-4xl font-bold mb-6 text-[#0ff] drop-shadow-lg">LoveTalk — Where Love Begins 💞</h1>
+    <h1 class="text-4xl font-bold mb-6 text-[#0ff] drop-shadow-lg">LoveTalk — Where Love Begins</h1>
 
-    <div class="neon-border rounded-xl p-6 w-full max-w-3xl flex flex-col items-center space-y-4">
-
-        <div class="flex flex-wrap justify-center gap-4">
-            <div class="flex flex-col items-center">
-                <h2 class="mb-2 text-[#0ff] font-semibold">You</h2>
-                <video id="localVideo" autoplay muted playsinline class="w-64 h-48"></video>
-            </div>
-
-            <div class="flex flex-col items-center">
-                <h2 class="mb-2 text-[#0ff] font-semibold">Partner</h2>
-                <video id="remoteVideo" autoplay playsinline class="w-64 h-48"></video>
-            </div>
+    <div class="neon-border rounded-xl p-6 w-full max-w-md flex flex-col items-center space-y-4">
+        <div class="w-full text-center">
+            <p class="text-lg">Your ID: <span id="peerId" class="font-mono text-[#00ffff]">Generating...</span></p>
+            <button id="copyPeerId" class="neon-btn px-3 py-1 mt-2 text-sm rounded">Copy</button>
         </div>
 
-        <p class="text-lg">Your ID: <span id="peerId" class="font-mono text-[#00ffff]">Generating...</span></p>
+        <input id="remoteId" type="text" placeholder="Enter Remote Peer ID"
+            class="w-full p-2 rounded bg-black text-[#0ff] placeholder-[#088] neon-border focus:outline-none" />
 
-        <p id="status" class="text-center text-[#0ff]">Status: Waiting for partner...</p>
+        <button id="connectBtn" class="neon-btn px-4 py-2 rounded w-full">Start Call</button>
 
-        <div id="controls" class="hidden flex flex-wrap justify-center gap-3 mt-3">
-            <button id="muteBtn" class="neon-btn px-4 py-1 rounded">Mute Audio</button>
-            <button id="camBtn" class="neon-btn px-4 py-1 rounded">Turn Off Camera</button>
+        <p id="status" class="text-center text-[#0ff]">Status: Not Connected</p>
+
+        <div id="controls" class="hidden flex space-x-3 mt-3">
+            <button id="muteBtn" class="neon-btn px-4 py-1 rounded">Mute</button>
             <button id="hangupBtn"
                 class="neon-btn px-4 py-1 rounded border-red-500 text-red-400 hover:bg-red-500 hover:text-black">Hang
                 Up</button>
@@ -95,116 +82,118 @@
         </div>
     </div>
 
+    <audio id="remoteAudio" autoplay></audio>
+
     <script>
-        const socket = io(); // your backend Socket.IO server
+        const socket = io(); // backend server
         const roomId = new URLSearchParams(location.search).get("id");
         const peer = new Peer({
             host: "0.peerjs.com",
             port: 443,
             path: "/",
-            secure: true
+            secure: true,
+            debug: 2
         });
 
-        const localVideo = document.getElementById("localVideo");
-        const remoteVideo = document.getElementById("remoteVideo");
         const peerIdEl = document.getElementById("peerId");
+        const copyBtn = document.getElementById("copyPeerId");
+        const connectBtn = document.getElementById("connectBtn");
+        const remoteIdInput = document.getElementById("remoteId");
         const statusEl = document.getElementById("status");
         const muteBtn = document.getElementById("muteBtn");
-        const camBtn = document.getElementById("camBtn");
         const hangupBtn = document.getElementById("hangupBtn");
         const controls = document.getElementById("controls");
+        const remoteAudio = document.getElementById("remoteAudio");
         const visualizer = document.getElementById("voiceVisualizer");
 
-        let localStream, currentCall;
-        let isMuted = false, camOff = false;
-        let analyser, dataArray;
+        let localStream, currentCall, isMuted = false, analyser, dataArray;
 
-        // --- Initialize Peer & Room Join ---
+        // Peer ID
         peer.on("open", id => {
             peerIdEl.textContent = id;
             socket.emit("join-room", roomId, id);
         });
 
-        // --- Capture Media ---
-        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-            .then(stream => {
-                localStream = stream;
-                localVideo.srcObject = stream;
-            })
-            .catch(err => alert("Camera or Mic access denied: " + err));
-
-        // --- When a new user connects ---
-        socket.on("user-connected", userId => {
-            console.log("Remote user connected:", userId);
-            callUser(userId);
+        copyBtn.addEventListener("click", () => {
+            navigator.clipboard.writeText(peerIdEl.textContent);
+            alert("Peer ID copied!");
         });
 
-        // --- Incoming call ---
+        // Get audio
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            localStream = stream;
+        }).catch(err => alert("Microphone access denied: " + err));
+
+        // Incoming call
         peer.on("call", call => {
-            if (currentCall) call.close();
+            if (currentCall) call.close(); // only allow one call at a time
             currentCall = call;
             call.answer(localStream);
             setupCallHandlers(call);
         });
 
-        // --- Make outgoing call ---
-        function callUser(remoteId) {
-            const call = peer.call(remoteId, localStream);
+
+        // Call To NewAdded User
+        socket.on("user-connected", (userId) => {
+            console.log("Remote user ID:", userId);
+            const call = peer.call(userId, localStream);
             currentCall = call;
             setupCallHandlers(call);
-        }
+        });
 
-        // --- Call setup ---
+        // Outgoing call
+        // connectBtn.addEventListener("click", () => {
+        //     const remoteId = remoteIdInput.value.trim();
+        //     if (!remoteId) return alert("Enter a remote ID");
+        //     const call = peer.call(remoteId, localStream);
+        //     currentCall = call;
+        //     setupCallHandlers(call);
+        // });
+
         function setupCallHandlers(call) {
             statusEl.textContent = "Status: Connecting...";
             controls.classList.remove("hidden");
 
             call.on("stream", remoteStream => {
                 statusEl.textContent = "Status: Connected ✅";
-                remoteVideo.srcObject = remoteStream;
+                remoteAudio.srcObject = remoteStream;
                 startVoiceVisualization(remoteStream);
             });
 
-            call.on("close", () => endCall("Call Ended ❌"));
+            call.on("close", () => {
+                endCall("Call Ended ❌");
+            });
+
             call.on("error", err => {
                 console.error(err);
                 endCall("Error: " + err.message);
             });
         }
 
-        // --- Audio mute/unmute ---
+        // Mute/unmute
         muteBtn.addEventListener("click", () => {
             if (!localStream) return;
             isMuted = !isMuted;
             localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-            muteBtn.textContent = isMuted ? "Unmute Audio" : "Mute Audio";
+            muteBtn.textContent = isMuted ? "Unmute" : "Mute";
         });
 
-        // --- Camera on/off ---
-        camBtn.addEventListener("click", () => {
-            if (!localStream) return;
-            camOff = !camOff;
-            localStream.getVideoTracks().forEach(track => track.enabled = !camOff);
-            camBtn.textContent = camOff ? "Turn On Camera" : "Turn Off Camera";
-        });
-
-        // --- Hangup ---
+        // Hang up
         hangupBtn.addEventListener("click", () => {
             if (currentCall) currentCall.close();
-            endCall("You Hung Up 💔");
+            endCall("You hung up");
         });
 
-        // --- End call ---
         function endCall(msg) {
-            statusEl.textContent = msg;
+            statusEl.textContent = "Status: " + msg;
             controls.classList.add("hidden");
-            remoteVideo.srcObject = null;
-            if (analyser && analyser.animationId) cancelAnimationFrame(analyser.animationId);
+            if (analyser) cancelAnimationFrame(analyser.animationId);
             visualizer.innerHTML = "";
+            remoteAudio.srcObject = null;
             currentCall = null;
         }
 
-        // --- Voice Visualization ---
+        // Voice visualization
         function startVoiceVisualization(stream) {
             const audioCtx = new AudioContext();
             const source = audioCtx.createMediaStreamSource(stream);
