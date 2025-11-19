@@ -57,17 +57,17 @@
     <h1 class="text-4xl font-bold mb-6 text-[#0ff] drop-shadow-lg">LoveTalk — Where Love Begins</h1>
 
     <div class="neon-border rounded-xl p-6 w-full max-w-md flex flex-col items-center space-y-4">
+
+        <p class="text-sm text-[#0ff]">TURN + STUN: Auto Server Selection Enabled 🔥</p>
+
         <div class="w-full text-center">
-            <p class="text-lg">Your ID: <span id="peerId" class="font-mono text-[#00ffff]">Generating...</span></p>
+            <p class="text-lg">Your ID:
+                <span id="peerId" class="font-mono text-[#00ffff]">Generating...</span>
+            </p>
             <button id="copyPeerId" class="neon-btn px-3 py-1 mt-2 text-sm rounded">Copy</button>
         </div>
 
-        <input id="remoteId" type="text" placeholder="Enter Remote Peer ID"
-            class="w-full p-2 rounded bg-black text-[#0ff] placeholder-[#088] neon-border focus:outline-none" />
-
-        <button id="connectBtn" class="neon-btn px-4 py-2 rounded w-full">Start Call</button>
-
-        <p id="status" class="text-center text-[#0ff]">Status: Not Connected</p>
+        <p id="status" class="text-center text-[#0ff]">Status: Waiting for Partner...</p>
 
         <div id="controls" class="hidden flex space-x-3 mt-3">
             <button id="muteBtn" class="neon-btn px-4 py-1 rounded">Mute</button>
@@ -80,148 +80,173 @@
             <p class="text-sm text-[#0ff] mb-2">Remote Voice Level</p>
             <div id="voiceVisualizer" class="voice-visualizer"></div>
         </div>
+
+        <div id="logs" class="bg-black/70 text-xs p-2 rounded w-full h-40 overflow-y-auto">
+        </div>
     </div>
 
     <audio id="remoteAudio" autoplay></audio>
 
     <script>
-        const socket = io(); // backend server
+
+        const logBox = document.getElementById("logs");
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            logBox.innerHTML += `<div>[${time}] ${msg}</div>`;
+            logBox.scrollTop = logBox.scrollHeight;
+            console.log(msg);
+        }
+
+        const socket = io();
         const roomId = new URLSearchParams(location.search).get("id");
+
         const peer = new Peer({
-            host: "0.peerjs.com",
-            port: 443,
-            path: "/",
-            secure: true,
-            debug: 2
+            debug: 2,
+            config: {
+                iceServers: [
+                    { urls: "stun:stun.l.google.com:19302" },
+                    { urls: "stun:stun1.l.google.com:19302" },
+
+                    {
+                        urls: [
+                            "turn:relay1.expressturn.com:3480?transport=udp",
+                            "turn:relay1.expressturn.com:3480?transport=tcp"
+                        ],
+                        username: "000000002078920456",
+                        credential: "7au5gxraKlawrx09qC45ARXNpoM="
+                    },
+
+                    {
+                        urls: [
+                            "stun:bn-turn2.xirsys.com",
+                            "turn:bn-turn2.xirsys.com:80?transport=udp",
+                            "turn:bn-turn2.xirsys.com:3478?transport=udp",
+                            "turn:bn-turn2.xirsys.com:80?transport=tcp",
+                            "turn:bn-turn2.xirsys.com:3478?transport=tcp",
+                            "turns:bn-turn2.xirsys.com:443?transport=tcp",
+                            "turns:bn-turn2.xirsys.com:5349?transport=tcp"
+                        ],
+                        username: "IV3rRPe9k4M8o1GyU7564eGUVmdQWRQXD5vHZIclMog1gOW9ixXSmbMYX79syFHNAAAAAGkdzuF0YXJpa3VsNzg=",
+                        credential: "ef63c548-c550-11f0-b337-0242ac140004"
+                    },
+                ]
+            }
         });
 
+        let localStream, currentCall, isMuted = false, analyser;
+
         const peerIdEl = document.getElementById("peerId");
-        const copyBtn = document.getElementById("copyPeerId");
-        const connectBtn = document.getElementById("connectBtn");
-        const remoteIdInput = document.getElementById("remoteId");
         const statusEl = document.getElementById("status");
-        const muteBtn = document.getElementById("muteBtn");
-        const hangupBtn = document.getElementById("hangupBtn");
-        const controls = document.getElementById("controls");
         const remoteAudio = document.getElementById("remoteAudio");
         const visualizer = document.getElementById("voiceVisualizer");
 
-        let localStream, currentCall, isMuted = false, analyser, dataArray;
-
-        // Peer ID
         peer.on("open", id => {
             peerIdEl.textContent = id;
+            log("Peer ID: " + id);
             socket.emit("join-room", roomId, id);
         });
 
-        copyBtn.addEventListener("click", () => {
-            navigator.clipboard.writeText(peerIdEl.textContent);
-            alert("Peer ID copied!");
-        });
-
-        // Get audio
         navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             localStream = stream;
-        }).catch(err => alert("Microphone access denied: " + err));
+            log("Microphone access granted");
+        });
 
-        // Incoming call
         peer.on("call", call => {
-            if (currentCall) call.close(); // only allow one call at a time
+            if (currentCall) call.close();
             currentCall = call;
+            log("Incoming call from: " + call.peer);
             call.answer(localStream);
             setupCallHandlers(call);
         });
 
-
-        // Call To NewAdded User
         socket.on("user-connected", (userId) => {
-            console.log("Remote user ID:", userId);
+            log("User connected: " + userId);
             const call = peer.call(userId, localStream);
             currentCall = call;
             setupCallHandlers(call);
         });
 
-        // Outgoing call
-        // connectBtn.addEventListener("click", () => {
-        //     const remoteId = remoteIdInput.value.trim();
-        //     if (!remoteId) return alert("Enter a remote ID");
-        //     const call = peer.call(remoteId, localStream);
-        //     currentCall = call;
-        //     setupCallHandlers(call);
-        // });
-
         function setupCallHandlers(call) {
             statusEl.textContent = "Status: Connecting...";
-            controls.classList.remove("hidden");
+            document.getElementById("controls").classList.remove("hidden");
+
+            call.on("iceStateChanged", state => {
+                log("ICE state: " + state);
+            });
+
+            if (call.peerConnection) {
+                const pc = call.peerConnection;
+                pc.addEventListener("icecandidate", e => {
+                    if (e.candidate) log("ICE Candidate Type: " + e.candidate.type);
+                });
+                pc.addEventListener("connectionstatechange", () => {
+                    log("Connection State: " + pc.connectionState);
+                });
+            }
 
             call.on("stream", remoteStream => {
-                statusEl.textContent = "Status: Connected ✅";
+                statusEl.textContent = "Status: Connected 🎯";
                 remoteAudio.srcObject = remoteStream;
-                startVoiceVisualization(remoteStream);
+                log("Remote Stream received.");
+                startVisualizer(remoteStream);
             });
 
             call.on("close", () => {
-                endCall("Call Ended ❌");
+                log("Call closed");
+                cleanup("Call Ended ❌");
             });
 
             call.on("error", err => {
-                console.error(err);
-                endCall("Error: " + err.message);
+                log("Error: " + err.message);
+                cleanup("Call Error ⚠️");
             });
         }
 
-        // Mute/unmute
-        muteBtn.addEventListener("click", () => {
-            if (!localStream) return;
+        document.getElementById("muteBtn").addEventListener("click", () => {
             isMuted = !isMuted;
-            localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-            muteBtn.textContent = isMuted ? "Unmute" : "Mute";
+            localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+            log("Mic " + (isMuted ? "OFF" : "ON"));
         });
 
-        // Hang up
-        hangupBtn.addEventListener("click", () => {
+        document.getElementById("hangupBtn").addEventListener("click", () => {
             if (currentCall) currentCall.close();
-            endCall("You hung up");
+            cleanup("You Hung Up");
         });
 
-        function endCall(msg) {
-            statusEl.textContent = "Status: " + msg;
-            controls.classList.add("hidden");
-            if (analyser) cancelAnimationFrame(analyser.animationId);
-            visualizer.innerHTML = "";
+        function cleanup(msg) {
+            statusEl.textContent = msg;
             remoteAudio.srcObject = null;
             currentCall = null;
+            visualizer.innerHTML = "";
         }
 
-        // Voice visualization
-        function startVoiceVisualization(stream) {
-            const audioCtx = new AudioContext();
-            const source = audioCtx.createMediaStreamSource(stream);
-            analyser = audioCtx.createAnalyser();
+        function startVisualizer(stream) {
+            const ctx = new AudioContext();
+            const src = ctx.createMediaStreamSource(stream);
+            analyser = ctx.createAnalyser();
             analyser.fftSize = 64;
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-            source.connect(analyser);
+            src.connect(analyser);
 
             visualizer.innerHTML = "";
+            let bars = [];
             for (let i = 0; i < 16; i++) {
                 const bar = document.createElement("div");
                 bar.className = "voice-bar";
                 visualizer.appendChild(bar);
+                bars.push(bar);
             }
 
-            const bars = visualizer.children;
-
-            function draw() {
-                analyser.getByteFrequencyData(dataArray);
+            function render() {
+                let data = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(data);
                 for (let i = 0; i < 16; i++) {
-                    const value = dataArray[i] / 4;
-                    bars[i].style.height = `${Math.max(4, value)}px`;
+                    bars[i].style.height = Math.max(4, data[i] / 4) + "px";
                 }
-                analyser.animationId = requestAnimationFrame(draw);
+                requestAnimationFrame(render);
             }
-            draw();
+            render();
         }
+
     </script>
 </body>
 
