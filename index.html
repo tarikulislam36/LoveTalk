@@ -51,33 +51,68 @@
     </style>
 </head>
 
-<body class="flex flex-col items-center justify-center min-h-screen p-6">
+<body class="flex flex-col items-center justify-center min-h-screen p-4 sm:p-6">
 
-    <h1 class="text-4xl font-bold mb-6 text-[#0ff] drop-shadow-lg">⚡ CyberTalk 1:1 Audio Chat ⚡</h1>
+    <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6 text-[#0ff] drop-shadow-lg text-center">
+        ⚡ CyberTalk 1:1 Audio Chat ⚡
+    </h1>
 
-    <div class="neon-border rounded-xl p-6 w-full max-w-md flex flex-col items-center space-y-4">
-        <div class="w-full text-center">
-            <p class="text-lg">Your ID: <span id="peerId" class="font-mono text-[#00ffff]">Generating...</span></p>
-            <button id="copyPeerId" class="neon-btn px-3 py-1 mt-2 text-sm rounded">Copy</button>
+    <!-- Main card -->
+    <div class="neon-border rounded-xl p-4 sm:p-6 w-full max-w-md flex flex-col items-center space-y-4 bg-black/60">
+        <div class="w-full text-center space-y-2">
+            <p class="text-base sm:text-lg break-all">
+                Your ID:
+                <span id="peerId" class="font-mono text-[#00ffff]">Generating...</span>
+            </p>
+            <button id="copyPeerId" class="neon-btn px-3 py-1 text-xs sm:text-sm rounded">
+                Copy
+            </button>
         </div>
 
         <input id="remoteId" type="text" placeholder="Enter Remote Peer ID"
-            class="w-full p-2 rounded bg-black text-[#0ff] placeholder-[#088] neon-border focus:outline-none" />
+            class="w-full p-2 rounded bg-black text-[#0ff] placeholder-[#088] neon-border focus:outline-none text-sm sm:text-base" />
 
-        <button id="connectBtn" class="neon-btn px-4 py-2 rounded w-full">Start Call</button>
+        <button id="connectBtn" class="neon-btn px-4 py-2 rounded w-full text-sm sm:text-base">
+            Start Call
+        </button>
 
-        <p id="status" class="text-center text-[#0ff]">Status: Not Connected</p>
+        <p id="status" class="text-center text-[#0ff] text-sm sm:text-base">
+            Status: Not Connected
+        </p>
 
-        <div id="controls" class="hidden flex space-x-3 mt-3">
-            <button id="muteBtn" class="neon-btn px-4 py-1 rounded">Mute</button>
+        <div id="controls" class="hidden flex space-x-3 mt-1 sm:mt-3">
+            <button id="muteBtn" class="neon-btn px-3 py-1 rounded text-sm">
+                Mute
+            </button>
             <button id="hangupBtn"
-                class="neon-btn px-4 py-1 rounded border-red-500 text-red-400 hover:bg-red-500 hover:text-black">Hang
-                Up</button>
+                class="neon-btn px-3 py-1 rounded border-red-500 text-red-400 hover:bg-red-500 hover:text-black text-sm">
+                Hang Up
+            </button>
         </div>
 
-        <div class="mt-6 text-center">
-            <p class="text-sm text-[#0ff] mb-2">Remote Voice Level</p>
+        <div class="mt-4 sm:mt-6 text-center w-full">
+            <p class="text-xs sm:text-sm text-[#0ff] mb-2">Remote Voice Level</p>
             <div id="voiceVisualizer" class="voice-visualizer"></div>
+        </div>
+    </div>
+
+    <!-- WebRTC debug panel -->
+    <div class="mt-4 w-full max-w-md">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-xs sm:text-sm font-semibold text-[#0ff]">
+                WebRTC Debug & Stats
+            </h2>
+            <button id="toggleLogs" class="neon-btn px-2 py-1 text-[10px] sm:text-xs rounded">
+                Hide
+            </button>
+        </div>
+        <div id="logContainer" class="neon-border rounded-lg p-2 bg-black/70">
+            <p id="statsOutput" class="text-[10px] sm:text-xs text-[#0ff] mb-1">
+                Stats: waiting for call...
+            </p>
+            <div id="logOutput"
+                class="h-32 sm:h-40 overflow-y-auto text-[10px] sm:text-xs font-mono bg-black/60 p-2 rounded">
+            </div>
         </div>
     </div>
 
@@ -89,7 +124,34 @@
             port: 443,
             path: "/",
             secure: true,
-            debug: 2
+            debug: 2,
+            config: {
+                iceServers: [
+                    // Public STUN
+                    { urls: "stun:stun.l.google.com:19302" },
+                    { urls: "stun:stun1.l.google.com:19302" },
+                    // Example TURN - replace with your own TURN service for production
+                    {
+                        urls: "turn:relay1.expressturn.com:3480",
+                        username: "000000002078920456",
+                        credential: "7au5gxraKlawrx09qC45ARXNpoM="
+                    },
+                    {
+                        urls: [
+                            "stun:bn-turn2.xirsys.com",
+                            "turn:bn-turn2.xirsys.com:80?transport=udp",
+                            "turn:bn-turn2.xirsys.com:3478?transport=udp",
+                            "turn:bn-turn2.xirsys.com:80?transport=tcp",
+                            "turn:bn-turn2.xirsys.com:3478?transport=tcp",
+                            "turns:bn-turn2.xirsys.com:443?transport=tcp",
+                            "turns:bn-turn2.xirsys.com:5349?transport=tcp"
+                        ],
+                        username: "IV3rRPe9k4M8o1GyU7564eGUVmdQWRQXD5vHZIclMog1gOW9ixXSmbMYX79syFHNAAAAAGkdzuF0YXJpa3VsNzg=",
+                        credential: "ef63c548-c550-11f0-b337-0242ac140004"
+                    }
+
+                ]
+            }
         });
 
         const peerIdEl = document.getElementById("peerId");
@@ -103,58 +165,202 @@
         const remoteAudio = document.getElementById("remoteAudio");
         const visualizer = document.getElementById("voiceVisualizer");
 
+        const logOutput = document.getElementById("logOutput");
+        const statsOutput = document.getElementById("statsOutput");
+        const toggleLogsBtn = document.getElementById("toggleLogs");
+        const logContainer = document.getElementById("logContainer");
+
         let localStream, currentCall, isMuted = false, analyser, dataArray;
+        let statsInterval = null;
+
+        function log(msg, level = "info") {
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement("div");
+            line.textContent = `[${time}] ${msg}`;
+            if (level === "error") line.classList.add("text-red-400");
+            if (level === "warn") line.classList.add("text-yellow-300");
+            logOutput.appendChild(line);
+            logOutput.scrollTop = logOutput.scrollHeight;
+
+            if (level === "error") console.error(msg);
+            else if (level === "warn") console.warn(msg);
+            else console.log(msg);
+        }
+
+        toggleLogsBtn.addEventListener("click", () => {
+            const isHidden = logContainer.classList.contains("hidden");
+            if (isHidden) {
+                logContainer.classList.remove("hidden");
+                toggleLogsBtn.textContent = "Hide";
+            } else {
+                logContainer.classList.add("hidden");
+                toggleLogsBtn.textContent = "Show";
+            }
+        });
+
+        log("PeerJS initializing...");
+        log("Using ICE servers: " + JSON.stringify(peer.options.config.iceServers));
 
         // Peer ID
         peer.on("open", id => {
             peerIdEl.textContent = id;
+            log("Peer open with ID: " + id);
+        });
+
+        peer.on("error", err => {
+            log("Peer error: " + err.message, "error");
+        });
+
+        peer.on("disconnected", () => {
+            log("Peer disconnected", "warn");
+        });
+
+        peer.on("close", () => {
+            log("Peer connection closed", "warn");
         });
 
         copyBtn.addEventListener("click", () => {
-            navigator.clipboard.writeText(peerIdEl.textContent);
+            navigator.clipboard.writeText(peerIdEl.textContent || "");
             alert("Peer ID copied!");
+            log("Peer ID copied to clipboard");
         });
 
         // Get audio
         navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             localStream = stream;
-        }).catch(err => alert("Microphone access denied: " + err));
+            log("Microphone access granted");
+        }).catch(err => {
+            const msg = "Microphone access denied: " + err;
+            alert(msg);
+            log(msg, "error");
+        });
 
         // Incoming call
         peer.on("call", call => {
-            if (currentCall) call.close(); // only allow one call at a time
+            log("Incoming call from: " + call.peer);
+            if (currentCall) {
+                log("Already in a call, closing new incoming call", "warn");
+                call.close();
+                return;
+            }
             currentCall = call;
             call.answer(localStream);
-            setupCallHandlers(call);
+            setupCallHandlers(call, "incoming");
         });
 
         // Outgoing call
         connectBtn.addEventListener("click", () => {
             const remoteId = remoteIdInput.value.trim();
-            if (!remoteId) return alert("Enter a remote ID");
+            if (!remoteId) {
+                alert("Enter a remote ID");
+                return;
+            }
+            if (!localStream) {
+                alert("Microphone not ready yet");
+                log("Tried to start call without localStream", "warn");
+                return;
+            }
+            log("Starting outgoing call to: " + remoteId);
             const call = peer.call(remoteId, localStream);
             currentCall = call;
-            setupCallHandlers(call);
+            setupCallHandlers(call, "outgoing");
         });
 
-        function setupCallHandlers(call) {
+        function setupCallHandlers(call, direction) {
             statusEl.textContent = "Status: Connecting...";
             controls.classList.remove("hidden");
+
+            log(`Call setup (${direction}), peer: ${call.peer}`);
+
+            // ICE state changes (PeerJS event)
+            call.on("iceStateChanged", state => {
+                log("ICE state changed: " + state);
+                statusEl.textContent = "Status: ICE " + state;
+            });
+
+            // Access underlying RTCPeerConnection stats
+            if (call.peerConnection) {
+                const pc = call.peerConnection;
+                log("PeerConnection created");
+
+                pc.addEventListener("iceconnectionstatechange", () => {
+                    log("pc.iceConnectionState: " + pc.iceConnectionState);
+                });
+
+                pc.addEventListener("connectionstatechange", () => {
+                    log("pc.connectionState: " + pc.connectionState);
+                });
+
+                // Start stats polling once connected
+                startStatsPolling(pc);
+            }
 
             call.on("stream", remoteStream => {
                 statusEl.textContent = "Status: Connected ✅";
                 remoteAudio.srcObject = remoteStream;
+                log("Remote stream received");
                 startVoiceVisualization(remoteStream);
             });
 
             call.on("close", () => {
+                log("Call closed");
                 endCall("Call Ended ❌");
             });
 
             call.on("error", err => {
-                console.error(err);
+                log("Call error: " + err.message, "error");
                 endCall("Error: " + err.message);
             });
+        }
+
+        function startStatsPolling(pc) {
+            if (!pc || !pc.getStats) {
+                log("getStats not available on this RTCPeerConnection", "warn");
+                return;
+            }
+
+            if (statsInterval) clearInterval(statsInterval);
+
+            statsInterval = setInterval(async () => {
+                try {
+                    const stats = await pc.getStats(null);
+                    let audioIn = null;
+                    let selectedCandidatePair = null;
+
+                    stats.forEach(report => {
+                        if (report.type === "inbound-rtp" && report.kind === "audio") {
+                            audioIn = report;
+                        }
+                        if (report.type === "candidate-pair" && report.state === "succeeded") {
+                            selectedCandidatePair = report;
+                        }
+                    });
+
+                    let text = "Stats: ";
+
+                    if (audioIn) {
+                        const bitrateKbps = audioIn.bytesReceived && audioIn.timestamp && audioIn.lastTimestamp
+                            ? (((audioIn.bytesReceived - (audioIn.lastBytesReceived || 0)) * 8) /
+                                ((audioIn.timestamp - (audioIn.lastTimestamp || audioIn.timestamp)) / 1000) / 1000).toFixed(1)
+                            : null;
+
+                        text += ` packetsReceived=${audioIn.packetsReceived ?? "?"}, packetsLost=${audioIn.packetsLost ?? "?"}`;
+                        if (audioIn.jitter != null) text += `, jitter=${audioIn.jitter.toFixed(3)}`;
+                        if (bitrateKbps && isFinite(bitrateKbps)) text += `, estBitrate=${bitrateKbps} kbps`;
+                    }
+
+                    if (selectedCandidatePair) {
+                        if (selectedCandidatePair.currentRoundTripTime != null) {
+                            text += `, rtt=${(selectedCandidatePair.currentRoundTripTime * 1000).toFixed(0)} ms`;
+                        }
+                    }
+
+                    statsOutput.textContent = text;
+                } catch (err) {
+                    log("getStats error: " + err.message, "error");
+                    statsOutput.textContent = "Stats: error reading stats";
+                }
+            }, 2000);
         }
 
         // Mute/unmute
@@ -163,21 +369,34 @@
             isMuted = !isMuted;
             localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
             muteBtn.textContent = isMuted ? "Unmute" : "Mute";
+            log("Local mic " + (isMuted ? "muted" : "unmuted"));
         });
 
         // Hang up
         hangupBtn.addEventListener("click", () => {
-            if (currentCall) currentCall.close();
+            if (currentCall) {
+                log("Hangup clicked, closing call");
+                currentCall.close();
+            }
             endCall("You hung up");
         });
 
         function endCall(msg) {
             statusEl.textContent = "Status: " + msg;
             controls.classList.add("hidden");
-            if (analyser) cancelAnimationFrame(analyser.animationId);
+
+            if (analyser && analyser.animationId) {
+                cancelAnimationFrame(analyser.animationId);
+            }
             visualizer.innerHTML = "";
             remoteAudio.srcObject = null;
             currentCall = null;
+
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+            statsOutput.textContent = "Stats: waiting for call...";
         }
 
         // Voice visualization
