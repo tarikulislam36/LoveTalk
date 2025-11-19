@@ -54,26 +54,28 @@
 
 <body class="flex flex-col items-center justify-center min-h-screen p-6">
 
-    <h1 class="text-4xl font-bold mb-6 text-[#0ff] drop-shadow-lg">LoveTalk — Where Love Begins</h1>
+    <h1 class="text-4xl font-bold mb-6 text-[#0ff] drop-shadow-lg">LoveTalk - Where Love Begins</h1>
 
     <div class="neon-border rounded-xl p-6 w-full max-w-md flex flex-col items-center space-y-4">
 
         <p class="text-sm text-[#0ff]">TURN + STUN: Auto Server Selection Enabled 🔥</p>
 
         <div class="w-full text-center">
-            <p class="text-lg">Your ID:
-                <span id="peerId" class="font-mono text-[#00ffff]">Generating...</span>
+            <p class="text-lg">
+                Your ID:
+                <span id="peerId" class="font-mono text-[#00ffff]">Initializing...</span>
             </p>
             <button id="copyPeerId" class="neon-btn px-3 py-1 mt-2 text-sm rounded">Copy</button>
         </div>
 
-        <p id="status" class="text-center text-[#0ff]">Status: Waiting for Partner...</p>
+        <p id="status" class="text-center text-[#0ff]">Status: Starting...</p>
 
         <div id="controls" class="hidden flex space-x-3 mt-3">
             <button id="muteBtn" class="neon-btn px-4 py-1 rounded">Mute</button>
             <button id="hangupBtn"
-                class="neon-btn px-4 py-1 rounded border-red-500 text-red-400 hover:bg-red-500 hover:text-black">Hang
-                Up</button>
+                class="neon-btn px-4 py-1 rounded border-red-500 text-red-400 hover:bg-red-500 hover:text-black">
+                Hang Up
+            </button>
         </div>
 
         <div class="mt-6 text-center">
@@ -81,32 +83,82 @@
             <div id="voiceVisualizer" class="voice-visualizer"></div>
         </div>
 
-        <div id="logs" class="bg-black/70 text-xs p-2 rounded w-full h-40 overflow-y-auto">
-        </div>
+        <div id="logs" class="bg-black/70 text-xs p-2 rounded w-full h-40 overflow-y-auto"></div>
     </div>
 
     <audio id="remoteAudio" autoplay></audio>
 
     <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // UI refs
+            const ui = {
+                logBox: document.getElementById("logs"),
+                peerIdEl: document.getElementById("peerId"),
+                statusEl: document.getElementById("status"),
+                controlsEl: document.getElementById("controls"),
+                muteBtn: document.getElementById("muteBtn"),
+                hangupBtn: document.getElementById("hangupBtn"),
+                copyBtn: document.getElementById("copyPeerId"),
+                remoteAudio: document.getElementById("remoteAudio"),
+                visualizer: document.getElementById("voiceVisualizer"),
+            };
 
-        const logBox = document.getElementById("logs");
-        function log(msg) {
-            const time = new Date().toLocaleTimeString();
-            logBox.innerHTML += `<div>[${time}] ${msg}</div>`;
-            logBox.scrollTop = logBox.scrollHeight;
-            console.log(msg);
-        }
+            function log(msg, level = "info") {
+                const time = new Date().toLocaleTimeString();
+                const line = document.createElement("div");
+                line.textContent = `[${time}] ${msg}`;
+                if (level === "error") line.classList.add("text-red-400");
+                if (level === "warn") line.classList.add("text-yellow-300");
+                ui.logBox.appendChild(line);
+                ui.logBox.scrollTop = ui.logBox.scrollHeight;
 
-        const socket = io();
-        const roomId = new URLSearchParams(location.search).get("id");
+                if (level === "error") console.error(msg);
+                else if (level === "warn") console.warn(msg);
+                else console.log(msg);
+            }
 
-        const peer = new Peer({
-            debug: 2,
-            config: {
+            const roomId = new URLSearchParams(location.search).get("id") || "default-room";
+            log("Room ID: " + roomId);
+
+            const state = {
+                peer: null,
+                socket: null,
+                localStream: null,
+                currentCall: null,
+                isMuted: false,
+                analyser: null,
+                pendingIncomingCall: null,
+                pendingRemoteUserId: null,
+                peerInitAttempts: 0,
+                maxPeerInitAttempts: 3,
+            };
+
+            // ----- Socket.IO init -----
+            function initSocket() {
+                state.socket = io();
+                state.socket.on("connect", () => {
+                    log("Socket connected: " + state.socket.id);
+                });
+                state.socket.on("connect_error", (err) => {
+                    log("Socket connect error: " + err.message, "error");
+                });
+
+                state.socket.on("user-connected", (userId) => {
+                    log("User connected in room: " + userId);
+                    if (!state.localStream) {
+                        log("Local stream not ready yet, queue outgoing call", "warn");
+                        state.pendingRemoteUserId = userId;
+                        return;
+                    }
+                    startOutgoingCall(userId);
+                });
+            }
+
+            // ----- PeerJS init with retry -----
+            const iceConfig = {
                 iceServers: [
                     { urls: "stun:stun.l.google.com:19302" },
                     { urls: "stun:stun1.l.google.com:19302" },
-
                     {
                         urls: [
                             "turn:relay1.expressturn.com:3480?transport=udp",
@@ -115,7 +167,6 @@
                         username: "000000002078920456",
                         credential: "7au5gxraKlawrx09qC45ARXNpoM="
                     },
-
                     {
                         urls: [
                             "stun:bn-turn2.xirsys.com",
@@ -126,127 +177,252 @@
                             "turns:bn-turn2.xirsys.com:443?transport=tcp",
                             "turns:bn-turn2.xirsys.com:5349?transport=tcp"
                         ],
-                        username: "IV3rRPe9k4M8o1GyU7564eGUVmdQWRQXD5vHZIclMog1gOW9ixXSmbMYX79syFHNAAAAAGkdzuF0YXJpa3VsNzg=",
+                        username:
+                            "IV3rRPe9k4M8o1GyU7564eGUVmdQWRQXD5vHZIclMog1gOW9ixXSmbMYX79syFHNAAAAAGkdzuF0YXJpa3VsNzg=",
                         credential: "ef63c548-c550-11f0-b337-0242ac140004"
                     },
-                ]
-            }
-        });
+                ],
+            };
 
-        let localStream, currentCall, isMuted = false, analyser;
-
-        const peerIdEl = document.getElementById("peerId");
-        const statusEl = document.getElementById("status");
-        const remoteAudio = document.getElementById("remoteAudio");
-        const visualizer = document.getElementById("voiceVisualizer");
-
-        peer.on("open", id => {
-            peerIdEl.textContent = id;
-            log("Peer ID: " + id);
-            socket.emit("join-room", roomId, id);
-        });
-
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-            localStream = stream;
-            log("Microphone access granted");
-        });
-
-        peer.on("call", call => {
-            if (currentCall) call.close();
-            currentCall = call;
-            log("Incoming call from: " + call.peer);
-            call.answer(localStream);
-            setupCallHandlers(call);
-        });
-
-        socket.on("user-connected", (userId) => {
-            log("User connected: " + userId);
-            const call = peer.call(userId, localStream);
-            currentCall = call;
-            setupCallHandlers(call);
-        });
-
-        function setupCallHandlers(call) {
-            statusEl.textContent = "Status: Connecting...";
-            document.getElementById("controls").classList.remove("hidden");
-
-            call.on("iceStateChanged", state => {
-                log("ICE state: " + state);
-            });
-
-            if (call.peerConnection) {
-                const pc = call.peerConnection;
-                pc.addEventListener("icecandidate", e => {
-                    if (e.candidate) log("ICE Candidate Type: " + e.candidate.type);
-                });
-                pc.addEventListener("connectionstatechange", () => {
-                    log("Connection State: " + pc.connectionState);
-                });
-            }
-
-            call.on("stream", remoteStream => {
-                statusEl.textContent = "Status: Connected 🎯";
-                remoteAudio.srcObject = remoteStream;
-                log("Remote Stream received.");
-                startVisualizer(remoteStream);
-            });
-
-            call.on("close", () => {
-                log("Call closed");
-                cleanup("Call Ended ❌");
-            });
-
-            call.on("error", err => {
-                log("Error: " + err.message);
-                cleanup("Call Error ⚠️");
-            });
-        }
-
-        document.getElementById("muteBtn").addEventListener("click", () => {
-            isMuted = !isMuted;
-            localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
-            log("Mic " + (isMuted ? "OFF" : "ON"));
-        });
-
-        document.getElementById("hangupBtn").addEventListener("click", () => {
-            if (currentCall) currentCall.close();
-            cleanup("You Hung Up");
-        });
-
-        function cleanup(msg) {
-            statusEl.textContent = msg;
-            remoteAudio.srcObject = null;
-            currentCall = null;
-            visualizer.innerHTML = "";
-        }
-
-        function startVisualizer(stream) {
-            const ctx = new AudioContext();
-            const src = ctx.createMediaStreamSource(stream);
-            analyser = ctx.createAnalyser();
-            analyser.fftSize = 64;
-            src.connect(analyser);
-
-            visualizer.innerHTML = "";
-            let bars = [];
-            for (let i = 0; i < 16; i++) {
-                const bar = document.createElement("div");
-                bar.className = "voice-bar";
-                visualizer.appendChild(bar);
-                bars.push(bar);
-            }
-
-            function render() {
-                let data = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(data);
-                for (let i = 0; i < 16; i++) {
-                    bars[i].style.height = Math.max(4, data[i] / 4) + "px";
+            function initPeer() {
+                if (state.peer && !state.peer.destroyed) {
+                    try {
+                        state.peer.destroy();
+                    } catch (e) {
+                        // ignore
+                    }
                 }
-                requestAnimationFrame(render);
-            }
-            render();
-        }
 
+                state.peerInitAttempts += 1;
+                log("Initializing PeerJS (attempt " + state.peerInitAttempts + ")");
+                ui.peerIdEl.textContent = "Initializing...";
+
+                const peer = new Peer(undefined, {
+                    host: "0.peerjs.com",
+                    port: 443,
+                    path: "/",
+                    secure: true,
+                    debug: 2,
+                    config: iceConfig,
+                });
+
+                state.peer = peer;
+
+                peer.on("open", (id) => {
+                    log("Peer open with ID: " + id);
+                    ui.peerIdEl.textContent = id;
+                    ui.statusEl.textContent = "Status: Waiting for Partner...";
+                    if (state.socket && state.socket.connected) {
+                        state.socket.emit("join-room", roomId, id);
+                        log("Joined room via socket");
+                    } else {
+                        log("Socket not ready when peer opened", "warn");
+                    }
+                });
+
+                peer.on("error", (err) => {
+                    log("Peer error: " + err.type + " - " + err.message, "error");
+                    ui.statusEl.textContent = "Status: Peer error (" + err.type + ")";
+                    if (
+                        (err.type === "network" || err.type === "server-error") &&
+                        state.peerInitAttempts < state.maxPeerInitAttempts
+                    ) {
+                        log("Retrying Peer init in 2s");
+                        setTimeout(initPeer, 2000);
+                    }
+                });
+
+                peer.on("disconnected", () => {
+                    log("Peer disconnected, trying to reconnect", "warn");
+                    ui.statusEl.textContent = "Status: Reconnecting...";
+                    try {
+                        peer.reconnect();
+                    } catch (e) {
+                        log("Peer reconnect error: " + e.message, "error");
+                    }
+                });
+
+                peer.on("close", () => {
+                    log("Peer connection closed", "warn");
+                    ui.statusEl.textContent = "Status: Peer closed";
+                    if (state.peerInitAttempts < state.maxPeerInitAttempts) {
+                        log("Recreating Peer instance in 2s");
+                        setTimeout(initPeer, 2000);
+                    }
+                });
+
+                peer.on("call", (call) => {
+                    log("Incoming call from: " + call.peer);
+                    if (state.currentCall) {
+                        log("Already in call, closing new incoming call", "warn");
+                        call.close();
+                        return;
+                    }
+                    if (!state.localStream) {
+                        log("Local stream not ready, queue incoming call", "warn");
+                        state.pendingIncomingCall = call;
+                        return;
+                    }
+                    answerCall(call);
+                });
+            }
+
+            // ----- Media (mic) init -----
+            function initMedia() {
+                ui.statusEl.textContent = "Status: Waiting for microphone permission...";
+                navigator.mediaDevices
+                    .getUserMedia({ audio: true })
+                    .then((stream) => {
+                        state.localStream = stream;
+                        ui.statusEl.textContent = "Status: Ready";
+                        log("Microphone access granted");
+
+                        // If some events came before stream
+                        if (state.pendingIncomingCall) {
+                            log("Processing queued incoming call");
+                            answerCall(state.pendingIncomingCall);
+                            state.pendingIncomingCall = null;
+                        }
+                        if (state.pendingRemoteUserId) {
+                            log("Processing queued outgoing call to " + state.pendingRemoteUserId);
+                            startOutgoingCall(state.pendingRemoteUserId);
+                            state.pendingRemoteUserId = null;
+                        }
+                    })
+                    .catch((err) => {
+                        ui.statusEl.textContent = "Status: Mic permission denied";
+                        log("Microphone access denied: " + err.message, "error");
+                    });
+            }
+
+            // ----- Call helpers -----
+            function answerCall(call) {
+                state.currentCall = call;
+                call.answer(state.localStream);
+                setupCallHandlers(call);
+            }
+
+            function startOutgoingCall(userId) {
+                if (!state.peer || state.peer.disconnected || state.peer.destroyed) {
+                    log("Cannot start call, peer is not ready", "error");
+                    return;
+                }
+                state.currentCall = state.peer.call(userId, state.localStream);
+                log("Starting outgoing call to: " + userId);
+                setupCallHandlers(state.currentCall);
+            }
+
+            function setupCallHandlers(call) {
+                ui.statusEl.textContent = "Status: Connecting...";
+                ui.controlsEl.classList.remove("hidden");
+
+                call.on("iceStateChanged", (stateStr) => {
+                    log("ICE state: " + stateStr);
+                });
+
+                if (call.peerConnection) {
+                    const pc = call.peerConnection;
+                    pc.addEventListener("icecandidate", (e) => {
+                        if (e.candidate) {
+                            log("ICE candidate type: " + e.candidate.type);
+                        }
+                    });
+                    pc.addEventListener("connectionstatechange", () => {
+                        log("PeerConnection state: " + pc.connectionState);
+                    });
+                }
+
+                call.on("stream", (remoteStream) => {
+                    ui.statusEl.textContent = "Status: Connected";
+                    log("Remote stream received");
+                    ui.remoteAudio.srcObject = remoteStream;
+                    startVisualizer(remoteStream);
+                });
+
+                call.on("close", () => {
+                    log("Call closed");
+                    cleanupCall("Call ended");
+                });
+
+                call.on("error", (err) => {
+                    log("Call error: " + err.message, "error");
+                    cleanupCall("Call error");
+                });
+            }
+
+            function cleanupCall(msg) {
+                ui.statusEl.textContent = "Status: " + msg;
+                ui.remoteAudio.srcObject = null;
+                state.currentCall = null;
+                ui.controlsEl.classList.add("hidden");
+                ui.visualizer.innerHTML = "";
+            }
+
+            // ----- Visualizer -----
+            function startVisualizer(stream) {
+                const ctx = new AudioContext();
+                const src = ctx.createMediaStreamSource(stream);
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 64;
+                src.connect(analyser);
+                state.analyser = analyser;
+
+                ui.visualizer.innerHTML = "";
+                const bars = [];
+                for (let i = 0; i < 16; i++) {
+                    const bar = document.createElement("div");
+                    bar.className = "voice-bar";
+                    ui.visualizer.appendChild(bar);
+                    bars.push(bar);
+                }
+
+                function render() {
+                    if (!state.analyser) return;
+                    const data = new Uint8Array(state.analyser.frequencyBinCount);
+                    state.analyser.getByteFrequencyData(data);
+                    for (let i = 0; i < bars.length; i++) {
+                        bars[i].style.height = Math.max(4, data[i] / 4) + "px";
+                    }
+                    requestAnimationFrame(render);
+                }
+                render();
+            }
+
+            // ----- UI events -----
+            ui.muteBtn.addEventListener("click", () => {
+                if (!state.localStream) {
+                    log("Mute clicked but localStream not ready", "warn");
+                    return;
+                }
+                state.isMuted = !state.isMuted;
+                state.localStream.getAudioTracks().forEach((t) => (t.enabled = !state.isMuted));
+                ui.muteBtn.textContent = state.isMuted ? "Unmute" : "Mute";
+                log("Mic " + (state.isMuted ? "muted" : "unmuted"));
+            });
+
+            ui.hangupBtn.addEventListener("click", () => {
+                if (state.currentCall) {
+                    state.currentCall.close();
+                }
+                cleanupCall("You hung up");
+            });
+
+            ui.copyBtn.addEventListener("click", () => {
+                const id = ui.peerIdEl.textContent || "";
+                if (!id || id === "Initializing...") {
+                    alert("Peer ID not ready yet");
+                    return;
+                }
+                navigator.clipboard.writeText(id);
+                log("Peer ID copied to clipboard");
+                alert("Peer ID copied");
+            });
+
+            // ----- Start everything -----
+            initSocket();
+            initMedia();
+            initPeer();
+        });
     </script>
 </body>
 
