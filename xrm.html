@@ -191,6 +191,16 @@
                 <audio id="remoteAudio" autoplay></audio>
             </section>
 
+            <!-- Video -->
+            <div class="mt-4">
+                <p class="text-xs text-[#0ff] mb-1">Video Preview</p>
+
+                <div class="flex gap-2">
+                    <video id="localVideo" autoplay muted playsinline class="w-1/2 rounded-lg shadow"></video>
+                    <video id="remoteVideo" autoplay playsinline class="w-1/2 rounded-lg shadow"></video>
+                </div>
+            </div>
+
             <!-- center column: Chat -->
             <section class="col-span-1 md:col-span-2 neon-border rounded-xl p-4 flex flex-col">
 
@@ -257,6 +267,8 @@
                 refreshUsers: document.getElementById("refreshUsers"),
                 roomLabel: document.getElementById("roomLabel"),
                 toast: document.getElementById("toast"),
+                localVideo: document.getElementById("localVideo"),
+                remoteVideo: document.getElementById("remoteVideo"),
             };
 
             function log(msg, level = "info") {
@@ -471,6 +483,7 @@
 
                     .then((stream) => {
                         state.localStream = stream;
+                        ui.localVideo.srcObject = stream;
                         ui.statusEl.textContent = "Status: Ready";
                         log("Microphone access granted");
                         if (state.pendingIncomingCall) { answerCall(state.pendingIncomingCall); state.pendingIncomingCall = null; }
@@ -507,6 +520,7 @@
                 call.on("stream", (remoteStream) => {
                     ui.statusEl.textContent = "Status: Connected";
                     log("Remote stream received");
+                    ui.remoteVideo.srcObject = remoteStream;
                     ui.remoteAudio.srcObject = remoteStream;
                     startVisualizer(remoteStream);
                 });
